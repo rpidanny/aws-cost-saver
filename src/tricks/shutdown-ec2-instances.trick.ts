@@ -3,7 +3,9 @@ import Listr, { ListrTaskWrapper } from 'listr';
 import chalk from 'chalk';
 
 import { TrickInterface } from '../interfaces/trick.interface';
+import { TagInterface } from '../interfaces/tag.interface';
 import { EC2InstanceState } from '../states/ec2-instance.state';
+import { filter } from 'lodash';
 
 export type ShutdownEC2InstancesState = EC2InstanceState[];
 
@@ -32,8 +34,9 @@ export class ShutdownEC2InstancesTrick
   async conserve(
     subListr: Listr,
     dryRun: boolean,
+    tags: Array<TagInterface>,
   ): Promise<ShutdownEC2InstancesState> {
-    const reservations = await this.listReservations();
+    const reservations = await this.listReservations(tags);
     const currentState = await this.getCurrentState(reservations);
 
     for (const instance of currentState) {
@@ -137,9 +140,21 @@ export class ShutdownEC2InstancesTrick
     );
   }
 
-  private async listReservations(): Promise<AWS.EC2.ReservationList> {
+  private async listReservations(
+    tags: Array<TagInterface>,
+  ): Promise<AWS.EC2.ReservationList> {
+    const params = {
+      ...(tags.length > 0 && {
+        Filters: tags.map(tag => ({
+          Name: `tag:${tag.name}`,
+          Values: [tag.value],
+        })),
+      }),
+    };
+    console.log(params);
     return (
-      (await this.ec2Client.describeInstances({}).promise()).Reservations || []
+      (await this.ec2Client.describeInstances(params).promise()).Reservations ||
+      []
     );
   }
 }

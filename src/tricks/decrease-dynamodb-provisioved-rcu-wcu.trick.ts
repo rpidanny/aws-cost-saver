@@ -140,6 +140,9 @@ export class DecreaseDynamoDBProvisionedRcuWcuTrick
   }
 
   private async listTables(): Promise<AWS.DynamoDB.TableNameList> {
+    console.log(
+      JSON.stringify(await this.ddbClient.listTables().promise(), null, 2),
+    );
     return (await this.ddbClient.listTables().promise()).TableNames || [];
   }
 }

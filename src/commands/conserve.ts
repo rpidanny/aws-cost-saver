@@ -8,6 +8,7 @@ import Listr, { ListrTask, ListrTaskWrapper } from 'listr';
 import { configureAWS } from '../aws-configure';
 import { TrickRegistry } from '../tricks/trick-registry';
 import { TrickInterface } from '../interfaces/trick.interface';
+import { TagInterface } from '../interfaces/tag.interface';
 
 import { ShutdownEC2InstancesTrick } from '../tricks/shutdown-ec2-instances.trick';
 import { StopFargateEcsServicesTrick } from '../tricks/stop-fargate-ecs-services.trick';
@@ -109,6 +110,11 @@ export default class Conserve extends Command {
       description:
         'Disables all default tricks. Useful alongside --use-trick when you only want a set of specific tricks to execute.',
     }),
+    tag: flags.string({
+      char: 't',
+      multiple: true,
+      description: 'Filters resources based on these tag(s).',
+    }),
   };
 
   static args = [];
@@ -123,6 +129,10 @@ export default class Conserve extends Command {
     this.printBanner(awsConfig, flags);
 
     const tricks = this.getEnabledTricks(flags);
+    const tags = this.getTags(flags);
+    // @ts-ignore
+    // console.log(tricks);
+    // this.exit(0);
     const taskList: ListrTask[] = [];
     const stateRoot: any = {};
 
@@ -137,13 +147,15 @@ export default class Conserve extends Command {
             collapse: false,
           });
 
-          await trick.conserve(subListr, flags['dry-run']).then(result => {
-            stateRoot[trick.getMachineName()] = result;
+          await trick
+            .conserve(subListr, flags['dry-run'], tags)
+            .then(result => {
+              stateRoot[trick.getMachineName()] = result;
 
-            if (!result || (Array.isArray(result) && result.length === 0)) {
-              task.skip('No resources found');
-            }
-          });
+              if (!result || (Array.isArray(result) && result.length === 0)) {
+                task.skip('No resources found');
+              }
+            });
 
           return subListr;
         },
@@ -151,6 +163,9 @@ export default class Conserve extends Command {
         collapse: false,
       } as ListrTask);
     }
+
+    console.log(taskList);
+    // this.exit(0);
 
     await new Listr(taskList, {
       concurrent: true,
@@ -284,5 +299,39 @@ AWS Cost Saver
         throw new Error('AbortedByUser');
       }
     }
+  }
+
+  private validateAndParseTag(tag: string) {
+    // TODO: use regex
+    if (tag.length > 0) {
+      const temp = tag.split('=');
+      if (
+        !(
+          temp.length === 2 &&
+          temp[0].length > 0 &&
+          temp[1] &&
+          temp[1].length > 0
+        )
+      ) {
+        throw new Error('InvalidTag');
+      }
+      return {
+        name: temp[0],
+        value: temp[1],
+      };
+    }
+    throw new Error('EmptyTag');
+  }
+
+  private getTags(flags: Record<string, any>) {
+    this.log(flags.tag);
+    if (flags.tag) {
+      const parsedTags: Array<TagInterface> = [];
+      for (let i = 0; i < flags.tag.length; i++) {
+        parsedTags.push(this.validateAndParseTag(flags.tag[i]));
+      }
+      return parsedTags;
+    }
+    return [];
   }
 }
